@@ -5,6 +5,7 @@ import time,random,socket,unicodedata
 import string, copy, os
 import pandas as pd
 import requests
+import re
 try:
     from urlparse import urlparse
 except ImportError:
@@ -83,7 +84,7 @@ class Pinterest_Helper(object):
         return tmp2        
         
     
-    def runme(self,url, threshold = 500, persistence = 120, debug = False):
+    def runme(self,url, threshold = 500 * 2, persistence = 120, debug = False, max_len = 2000, log_every = 20):
         final_results = []
         previmages = []
         tries = 0
@@ -109,6 +110,12 @@ class Pinterest_Helper(object):
                                 results.append(u_to_s(src))
                     previmages = copy.copy(images)
                     final_results = list(set(final_results + results))
+                    if len(final_results) > max_len:
+                        return final_results
+
+                    if debug:
+                        print('Len list', len(final_results)),
+
                     dummy = self.browser.find_element_by_tag_name('a')
                     dummy.send_keys(Keys.PAGE_DOWN)
                     randdelay(1,2)
@@ -190,6 +197,90 @@ class Pinterest_Helper(object):
                     src = string.replace(src,"/236x/","/736x/")
                     results.append(u_to_s(src))
         return results
+
+    def runme_bfs(self, url, breadths = [100], debug=True):
+        """ 
+        The function to add two Complex Numbers. 
+  
+        Parameters: 
+            url (string): The base url to start bfs 
+            breadths (list of int): list contains the breadth size at every level, len(breadths) is no of levels 
+          
+        Returns: 
+            final_results: randomly shuffled list of all image urls
+        """
+        if len(breadths) == 1:
+            print('LEVEL {}'.format(len(breadths)))
+            return self.runme(url, max_len=breadths[0], debug=debug)
+        elif len(breadths) == 0:
+            print('LEVEL {}'.format(len(breadths)))
+            return ''
+        else:
+            print('LEVEL {}'.format(len(breadths)))
+            final_results = []
+            pinURLs = self.runme_pins(url, max_len=breadths[0], debug=debug)
+            for pinURL in ['https://in.pinterest.com' + i for i in pinURLs]:
+                print('from LEVEL {}, calling LEVEL {}'.format(len(breadths), len(breadths) - 1))
+                results = self.runme_bfs(pinURL, breadths=breadths[1:], debug=debug)
+                final_results = list(set(final_results + results))
+            return final_results
+
+    def runme_pins(self, url, threshold = 500 * 2, persistence = 120, debug = False, max_len = 100, log_every = 20):
+        final_results = []
+        pinURLre = re.compile('/pin/[0-9]{18}/')
+        prevBoxes = []
+        tries = 0
+        try:
+            self.browser.get(url)
+            while threshold > 0:
+                try:
+                    results = []
+                    pinBoxes = self.browser.find_elements_by_tag_name("a")
+                    if pinBoxes == prevBoxes:
+                        tries += 1
+                    else:
+                        tries = 0
+                    if tries > persistence:
+                        if debug == True:
+                            print("Exitting: persistence exceeded")
+                        return final_results
+                    for i in pinBoxes:
+                        pinURL = i.get_attribute("href")
+                        if pinURLre.match(pinURL):
+                            results.append(u_to_s(pinURL))
+                    prevBoxes = copy.copy(pinBoxes)
+                    final_results = list(set(final_results + results))
+                    if len(final_results) > max_len:
+                        return final_results
+
+                    if debug:
+                        print('PINS Len list', len(final_results)),
+
+                    dummy = self.browser.find_element_by_tag_name('a')
+                    dummy.send_keys(Keys.PAGE_DOWN)
+                    randdelay(1,2)
+                    threshold -= 1
+                except (StaleElementReferenceException):
+                    if debug == True:
+                        print("StaleElementReferenceException")
+                    threshold -= 1
+        except (socket.error, socket.timeout):
+            if debug == True:
+                print("Socket Error")
+        except KeyboardInterrupt:
+            return final_results
+        if debug == True:
+            print("Exitting at end")
+        return final_results
+
+    def getURLs2(self, urls, threshold = 500, max_len=100, debug=False):
+        results = []
+        for t in urls:
+            tmp3 = self.runme(t, threshold, debug=debug, max_len=max_len)
+            results = list(set(results + tmp3))
+        random.shuffle(results)
+        return results
+        
             
         
         
